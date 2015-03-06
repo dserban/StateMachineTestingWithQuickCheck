@@ -90,7 +90,7 @@ pushRight element (MkCircularBufferLength currentLength) =
 -- Implementation of simplified model ends here
 
 urlPrefix :: String
-urlPrefix = "http://192.168.2.3:5000/"
+urlPrefix = "http://localhost:5000/"
 
 urlForAction :: Action -> String
 urlForAction action = urlPrefix ++ urlSuffix action
