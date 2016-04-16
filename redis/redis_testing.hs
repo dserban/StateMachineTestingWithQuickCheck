@@ -2,6 +2,8 @@
 
 import Database.Redis
 
+import Data.ByteString
+
 import Test.QuickCheck ( Arbitrary
                        , Args
                        , Gen
@@ -25,8 +27,8 @@ import Control.Applicative( (<$>)
 
 import Control.Concurrent ( threadDelay )
 
-data CustomSet = CustomSet { key :: String
-                           , value :: String
+data CustomSet = CustomSet { key :: ByteString
+                           , value :: ByteString
                            } deriving (Show)
 
 instance Arbitrary CustomSet where
@@ -37,8 +39,8 @@ instance Arbitrary CustomSet where
   where
     genSafeChar = elements $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']
 
-getsetHasExpectedBehavior :: CustomSet -> Property
-getsetHasExpectedBehavior customSet = monadicIO $ do
+getsetHasExpectedBehavior :: Connection -> CustomSet -> Property
+getsetHasExpectedBehavior conn customSet = monadicIO $ do
   _ <- run $ do
     runRedis conn $ set (key customSet) (value customSet)
   realityMatchesModel <- run $ ioStringsAreEqual first second
@@ -53,4 +55,4 @@ customArgs = ( stdArgs { maxSuccess = 1000000000 } )
 
 main = do
   conn <- connect defaultConnectInfo
-  quickCheckWith customArgs getsetHasExpectedBehavior
+  quickCheckWith customArgs (getsetHasExpectedBehavior conn)
