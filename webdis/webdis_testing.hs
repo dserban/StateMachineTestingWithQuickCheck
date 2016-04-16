@@ -51,8 +51,9 @@ instance Arbitrary CustomSet where
 
 getsetHasExpectedBehavior :: CustomSet -> Property
 getsetHasExpectedBehavior customSet = monadicIO $ do
-  _ <- run $ set customSet
-  _ <- run $ threadDelay 250000
+  _ <- run $ do
+    set customSet
+    threadDelay 500000
   realityMatchesModel <- run $ ioStringsAreEqual first second
   assert realityMatchesModel
   where
