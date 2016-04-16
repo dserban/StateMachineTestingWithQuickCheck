@@ -2,7 +2,7 @@
 
 import Database.Redis
 
-import Data.ByteString
+import Data.ByteString.Lazy.Char8
 
 import Test.QuickCheck ( Arbitrary
                        , Args
@@ -35,7 +35,7 @@ instance Arbitrary CustomSet where
   arbitrary = do
   key <- listOf1 genSafeChar
   value <- listOf1 genSafeChar
-  return (CustomSet key value)
+  return ( CustomSet (pack key) (pack value) )
   where
     genSafeChar = elements $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']
 
