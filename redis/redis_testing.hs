@@ -26,39 +26,41 @@ import Test.QuickCheck.Monadic ( assert
                                , run
                                )
 
-import Control.Applicative( (<$>)
-                          , (<*>)
-                          )
+import Control.Applicative ( (<$>)
+                           , (<*>)
+                           )
 
 import Control.Concurrent ( threadDelay )
 
 import Data.Maybe ( fromMaybe )
 
-import Data.ByteString.Char8 ( pack )
+import Data.ByteString.Char8 ( ByteString
+                             , pack
+                             )
 
-data CustomSet = CustomSet { key :: String
-                           , value :: String
+data CustomSet = CustomSet { key :: ByteString
+                           , value :: ByteString
                            } deriving (Show)
 
 instance Arbitrary CustomSet where
   arbitrary = do
   key <- listOf1 genSafeChar
   value <- listOf1 genSafeChar
-  return ( CustomSet key value )
+  return ( CustomSet (pack $ key) (pack $ value) )
   where
     genSafeChar = elements $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']
 
 getsetHasExpectedBehavior :: Connection -> CustomSet -> Property
 getsetHasExpectedBehavior conn customSet = monadicIO $ do
   _ <- run $ do
-    runRedis conn $ set (pack $ key customSet) (pack $ value customSet)
+    runRedis conn $ set (key customSet) (value customSet)
   realityMatchesModel <- run $ ioStringsAreEqual first second
   assert realityMatchesModel
   where
-    first = (return $ pack $ value customSet)
+    first = (return $ value customSet)
     second = do
       runRedis conn $ do
-        val <- get $ pack $ key customSet
+        val <- get $ key customSet
         case val of
           Left _ -> return "Some error occurred"
           Right v -> return $ fromMaybe "Could not find key in store" v
