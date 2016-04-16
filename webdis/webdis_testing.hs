@@ -1,5 +1,5 @@
-import Network.Curl ( curlGetString
-                    , CurlCode)
+import Network.Curl ( CurlCode
+                    , curlGetString)
 
 import Test.QuickCheck ( Arbitrary
                        , Args
