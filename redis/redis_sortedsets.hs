@@ -32,13 +32,7 @@ import Test.QuickCheck.Monadic ( assert
                                , run
                                )
 
-import Control.Applicative ( (<$>)
-                           , (<*>)
-                           )
-
 import Control.Concurrent ( threadDelay )
-
-import Data.Maybe ( fromMaybe )
 
 import Control.Monad.Trans ( liftIO )
 
@@ -81,7 +75,7 @@ sortedSetName = "sset"
 add :: RedisCtx m f => CustomSet -> m (f Integer)
 add customSet = zadd sortedSetName [(score customSet, value customSet)]
 
---delete :: RedisCtx m f => CustomSet -> m (f Integer)
+delete :: RedisCtx m f => CustomSet -> m (f Integer)
 delete customSet = zrem sortedSetName [(value customSet)]
 
 customArgs :: Args
@@ -92,10 +86,9 @@ sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
   realityMatchesModel <- run $ do
     threadDelay 500000
 
-    if action customSet == Add then
-      runRedis conn $ add customSet
-    else
-      runRedis conn $ delete customSet
+    case action customSet of
+      Add -> runRedis conn $ add customSet
+      Delete -> runRedis conn $ delete customSet
 
     setRange <- runRedis conn $ do
       val <- zcard sortedSetName
@@ -114,7 +107,6 @@ sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
     testEntry3 <- getEntry (randNumber3-1)
 
     liftIO $ print $ (show $ action customSet) ++ ": " ++ (unpack $ value customSet)
-    --liftIO $ print $ (show testEntry1) ++ " " ++ (show testEntry2) ++ " " ++ (show testEntry3)
 
     return $ (testEntry1 <= testEntry2) && (testEntry2 <= testEntry3)
 
@@ -123,7 +115,9 @@ sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
   where
     getEntry x = runRedis conn $ do
       val <- zrangeWithscores sortedSetName x x
-      case val of Right v -> return $ snd $ head $ v
+      case val of
+        Right v -> if v == [] then return 0
+                              else return $ snd $ head $ v
     getRandomPair x y gen = randomR (x, y) gen :: (Integer, StdGen)
 
 main :: IO ()
