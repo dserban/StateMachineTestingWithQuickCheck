@@ -32,8 +32,6 @@ import Test.QuickCheck.Monadic ( assert
                                , run
                                )
 
-import Control.Concurrent ( threadDelay )
-
 import Control.Monad.Trans ( liftIO )
 
 import Data.ByteString.Char8 ( ByteString
@@ -84,7 +82,6 @@ customArgs = ( stdArgs { maxSuccess = 1000000000 } )
 sortedSetHasExpectedBehavior :: Connection -> CustomSet -> Property
 sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
   realityMatchesModel <- run $ do
-    threadDelay 500000
 
     case action customSet of
       Add -> runRedis conn $ add customSet
