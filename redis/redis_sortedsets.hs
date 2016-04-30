@@ -46,7 +46,10 @@ import Data.ByteString.Char8 ( ByteString
                              , pack
                              )
 
-import System.Random
+import System.Random ( StdGen
+                     , getStdGen
+                     , randomR
+                     )
 
 data CustomSet = CustomSet { score :: Double
                            , value :: ByteString
@@ -71,7 +74,7 @@ customArgs = ( stdArgs { maxSuccess = 1000000000 } )
 sortedSetHasExpectedBehavior :: Connection -> CustomSet -> Property
 sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
   realityMatchesModel <- run $ do
-    --threadDelay 500000
+    threadDelay 500000
     runRedis conn $ add customSet
 
     setRange <- runRedis conn $ do
@@ -82,27 +85,25 @@ sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
 
     randomGen <- getStdGen
 
-    let (randNumber1, newGen1) = randomR (1, setRange) randomGen :: (Integer, StdGen)
-    let (randNumber2, newGen2) = randomR (randNumber1, setRange) newGen1 :: (Integer, StdGen)
-    let (randNumber3, newGen3) = randomR (randNumber2, setRange) newGen2 :: (Integer, StdGen)
+    let (randNumber1, newGen1) = getRandomPair 1 setRange randomGen
+    let (randNumber2, newGen2) = getRandomPair randNumber1 setRange newGen1
+    let (randNumber3, newGen3) = getRandomPair randNumber2 setRange newGen2
 
-    testEntry1 <- runRedis conn $ do
-      val <- zrangeWithscores sortedSetName (randNumber1-1) (randNumber1-1)
-      case val of Right v -> return $ snd $ head $ v
-
-    testEntry2 <- runRedis conn $ do
-      val <- zrangeWithscores sortedSetName (randNumber2-1) (randNumber2-1)
-      case val of Right v -> return $ snd $ head $ v
-
-    testEntry3 <- runRedis conn $ do
-      val <- zrangeWithscores sortedSetName (randNumber3-1) (randNumber3-1)
-      case val of Right v -> return $ snd $ head $ v
+    testEntry1 <- getEntry (randNumber1-1)
+    testEntry2 <- getEntry (randNumber2-1)
+    testEntry3 <- getEntry (randNumber3-1)
 
     liftIO $ print $ (show testEntry1) ++ " " ++ (show testEntry2) ++ " " ++ (show testEntry3)
 
     return $ (testEntry1 <= testEntry2) && (testEntry2 <= testEntry3)
 
   assert $ realityMatchesModel
+
+  where
+    getEntry x = runRedis conn $ do
+      val <- zrangeWithscores sortedSetName x x
+      case val of Right v -> return $ snd $ head $ v
+    getRandomPair x y gen = randomR (x, y) gen :: (Integer, StdGen)
 
 main :: IO ()
 main = do
