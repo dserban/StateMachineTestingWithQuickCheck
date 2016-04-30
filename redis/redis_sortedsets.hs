@@ -9,6 +9,7 @@ import Database.Redis ( Connection
                       , connect
                       , defaultConnectInfo
                       , zadd
+                      , zcard
                       , zrangeWithscores
                       , zrem
                       , zremrangebyrank
@@ -45,6 +46,8 @@ import Data.ByteString.Char8 ( ByteString
                              , pack
                              )
 
+import System.Random
+
 data CustomSet = CustomSet { score :: Double
                            , value :: ByteString
                            } deriving (Show)
@@ -67,18 +70,39 @@ customArgs = ( stdArgs { maxSuccess = 1000000000 } )
 
 sortedSetHasExpectedBehavior :: Connection -> CustomSet -> Property
 sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
-  _ <- run $ do
-    threadDelay 500000
+  realityMatchesModel <- run $ do
+    --threadDelay 500000
     runRedis conn $ add customSet
 
-    getScore <- runRedis conn $ do
-      val <- zrangeWithscores sortedSetName 0 (-1)
+    setRange <- runRedis conn $ do
+      val <- zcard sortedSetName
       case val of
-        Left _ -> return $ 0.0
-        Right v -> return $ snd $ head $ v
+        Left _ -> return 0
+        Right v -> return v
 
-    liftIO $ print getScore
-  assert $ 1 < 2
+    randomGen <- getStdGen
+
+    let (randNumber1, newGen1) = randomR (1, setRange) randomGen :: (Integer, StdGen)
+    let (randNumber2, newGen2) = randomR (randNumber1, setRange) newGen1 :: (Integer, StdGen)
+    let (randNumber3, newGen3) = randomR (randNumber2, setRange) newGen2 :: (Integer, StdGen)
+
+    testEntry1 <- runRedis conn $ do
+      val <- zrangeWithscores sortedSetName (randNumber1-1) (randNumber1-1)
+      case val of Right v -> return $ snd $ head $ v
+
+    testEntry2 <- runRedis conn $ do
+      val <- zrangeWithscores sortedSetName (randNumber2-1) (randNumber2-1)
+      case val of Right v -> return $ snd $ head $ v
+
+    testEntry3 <- runRedis conn $ do
+      val <- zrangeWithscores sortedSetName (randNumber3-1) (randNumber3-1)
+      case val of Right v -> return $ snd $ head $ v
+
+    liftIO $ print $ (show testEntry1) ++ " " ++ (show testEntry2) ++ " " ++ (show testEntry3)
+
+    return $ (testEntry1 <= testEntry2) && (testEntry2 <= testEntry3)
+
+  assert $ realityMatchesModel
 
 main :: IO ()
 main = do
