@@ -44,6 +44,7 @@ import Control.Monad.Trans ( liftIO )
 
 import Data.ByteString.Char8 ( ByteString
                              , pack
+                             , unpack
                              )
 
 import System.Random ( StdGen
@@ -51,15 +52,27 @@ import System.Random ( StdGen
                      , randomR
                      )
 
+data Action = Add | Delete deriving (Show, Eq)
+
 data CustomSet = CustomSet { score :: Double
                            , value :: ByteString
+                           , action :: Action
                            } deriving (Show)
+
+instance Arbitrary Action where
+  arbitrary = do
+    rand <- arbitrary
+    if rand == True then
+      return Add
+    else
+      return Delete
 
 instance Arbitrary CustomSet where
  arbitrary = do
  score <- arbitrary
  value <- listOf1 genSafeChar
- return ( CustomSet score (pack $ value) )
+ action <- arbitrary
+ return ( CustomSet score (pack $ value) action )
  where
    genSafeChar = elements $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']
 
@@ -68,6 +81,9 @@ sortedSetName = "sset"
 add :: RedisCtx m f => CustomSet -> m (f Integer)
 add customSet = zadd sortedSetName [(score customSet, value customSet)]
 
+--delete :: RedisCtx m f => CustomSet -> m (f Integer)
+delete customSet = zrem sortedSetName [(value customSet)]
+
 customArgs :: Args
 customArgs = ( stdArgs { maxSuccess = 1000000000 } )
 
@@ -75,7 +91,11 @@ sortedSetHasExpectedBehavior :: Connection -> CustomSet -> Property
 sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
   realityMatchesModel <- run $ do
     threadDelay 500000
-    runRedis conn $ add customSet
+
+    if action customSet == Add then
+      runRedis conn $ add customSet
+    else
+      runRedis conn $ delete customSet
 
     setRange <- runRedis conn $ do
       val <- zcard sortedSetName
@@ -93,7 +113,8 @@ sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
     testEntry2 <- getEntry (randNumber2-1)
     testEntry3 <- getEntry (randNumber3-1)
 
-    liftIO $ print $ (show testEntry1) ++ " " ++ (show testEntry2) ++ " " ++ (show testEntry3)
+    liftIO $ print $ (show $ action customSet) ++ ": " ++ (unpack $ value customSet)
+    --liftIO $ print $ (show testEntry1) ++ " " ++ (show testEntry2) ++ " " ++ (show testEntry3)
 
     return $ (testEntry1 <= testEntry2) && (testEntry2 <= testEntry3)
 
