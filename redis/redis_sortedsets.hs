@@ -44,6 +44,8 @@ import System.Random ( StdGen
                      , randomR
                      )
 
+import Foreign.C.Math.Double ( fabs )
+
 data Action = Add | Delete deriving (Show, Eq)
 
 data CustomSet = CustomSet { score :: Double
@@ -68,10 +70,13 @@ instance Arbitrary CustomSet where
  where
    genSafeChar = elements $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']
 
+sortedSetName :: ByteString
 sortedSetName = "sset"
 
 add :: RedisCtx m f => CustomSet -> m (f Integer)
-add customSet = zadd sortedSetName [(score customSet, value customSet)]
+add customSet = if fabs (score customSet) < 0.1
+                then zadd sortedSetName [(0, value customSet)]
+                else zadd sortedSetName [(score customSet, value customSet)]
 
 delete :: RedisCtx m f => CustomSet -> m (f Integer)
 delete customSet = zrem sortedSetName [(value customSet)]
@@ -103,7 +108,11 @@ sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
     testEntry2 <- getEntry (randNumber2-1)
     testEntry3 <- getEntry (randNumber3-1)
 
-    liftIO $ print $ (show $ action customSet) ++ ": " ++ (unpack $ value customSet)
+    writeFile "redis_sortedsets.log" $ (show $ action customSet) ++ ": " ++ (unpack $ value customSet) ++
+                                      "\n" ++ "Indexes chosen: " ++ (show $ randNumber1-1) ++ " "
+                                      ++ (show $ randNumber2-1) ++ " " ++ (show $ randNumber3-1) ++ "\n" ++
+                                      "Scores: " ++ (show testEntry1) ++ " " ++ (show testEntry2)
+                                      ++ " " ++ (show testEntry3) ++ "\n\n"
 
     return $ (testEntry1 <= testEntry2) && (testEntry2 <= testEntry3)
 
