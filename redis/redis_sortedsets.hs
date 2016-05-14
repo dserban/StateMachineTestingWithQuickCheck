@@ -27,15 +27,12 @@ import Test.QuickCheck ( Arbitrary
                        , stdArgs
                        , elements
                        , listOf1
-                       , vectorOf
                        )
 
 import Test.QuickCheck.Monadic ( assert
                                , monadicIO
                                , run
                                )
-
-import Control.Monad.Trans ( liftIO )
 
 import Data.ByteString.Char8 ( ByteString
                              , pack
@@ -47,13 +44,7 @@ import System.Random ( StdGen
                      , randomR
                      )
 
-import Control.Applicative ( (<$>) )
-
-import Foreign.C.Math.Double ( fabs )
-
-import Debug.Trace
-
-import Control.DeepSeq
+import qualified System.IO.Streams as Streams ( fromList )
 
 data Action = Add | Delete deriving (Show, Eq)
 
@@ -91,7 +82,7 @@ sortedSetName :: ByteString
 sortedSetName = "sset"
 
 add :: RedisCtx m f => CustomSet -> m (f Integer)
-add customSet = if fabs (score customSet) < 0.1
+add customSet = if abs (score customSet) < 0.1
                 then zadd sortedSetName [(0, value customSet)]
                 else zadd sortedSetName [(score customSet, value customSet)]
 
@@ -102,11 +93,11 @@ customArgs :: Args
 customArgs = ( stdArgs { maxSuccess = 1000000000 } )
 
 sortedSetHasExpectedBehavior :: Connection -> CustomSetList -> Property
-sortedSetHasExpectedBehavior conn customSetList = monadicIO $ do
+sortedSetHasExpectedBehavior conn instanceOfCustomSetList = monadicIO $ do
   realityMatchesModel <- run $ do
-    let MkCustomSetList csl = customSetList
-
-    _ <- mymap csl
+    let MkCustomSetList listOfCustomSets = instanceOfCustomSetList
+    listOfActions <- mapM mapAction listOfCustomSets
+    myStream <- Streams.fromList listOfActions
 
     setRange <- runRedis conn $ do
       val <- zcard sortedSetName
@@ -135,27 +126,21 @@ sortedSetHasExpectedBehavior conn customSetList = monadicIO $ do
   assert $ realityMatchesModel
 
   where
-    mymap [] = do
-      return 0
-
-    mymap li = do
-      mapAction $ head li
-      _ <- mymap $ tail li
-      return 0
-
     mapAction :: CustomSet -> IO (Either Reply Integer)
     mapAction customSet = do
       case action customSet of
         Add -> runRedis conn $ add customSet
         Delete -> runRedis conn $ delete customSet
 
+    getEntry :: Integer -> IO Double
     getEntry x = runRedis conn $ do
       val <- zrangeWithscores sortedSetName x x
       case val of
         Right v -> if v == [] then return 0
                               else return $ snd $ head $ v
 
-    getRandomPair x y gen = randomR (x, y) gen :: (Integer, StdGen)
+    getRandomPair :: Integer -> Integer -> StdGen -> (Integer, StdGen)
+    getRandomPair x y gen = randomR (x, y) gen
 
 main :: IO ()
 main = do
