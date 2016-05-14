@@ -2,6 +2,7 @@
 
 import Database.Redis ( Connection
                       , RedisCtx
+                      , Reply
                       , runRedis
                       , get
                       , set
@@ -20,11 +21,13 @@ import Test.QuickCheck ( Arbitrary
                        , Gen
                        , Property
                        , arbitrary
+                       , choose
                        , maxSuccess
                        , quickCheckWith
                        , stdArgs
                        , elements
                        , listOf1
+                       , vectorOf
                        )
 
 import Test.QuickCheck.Monadic ( assert
@@ -44,14 +47,23 @@ import System.Random ( StdGen
                      , randomR
                      )
 
+import Control.Applicative ( (<$>) )
+
 import Foreign.C.Math.Double ( fabs )
+
+import Debug.Trace
+
+import Control.DeepSeq
 
 data Action = Add | Delete deriving (Show, Eq)
 
-data CustomSet = CustomSet { score :: Double
-                           , value :: ByteString
-                           , action :: Action
-                           } deriving (Show)
+data CustomSet = MkCustomSet { score :: Double
+                             , value :: ByteString
+                             , action :: Action
+                             } deriving (Show)
+
+data CustomSetList = MkCustomSetList [CustomSet]
+                     deriving (Show)
 
 instance Arbitrary Action where
   arbitrary = do
@@ -63,12 +75,17 @@ instance Arbitrary Action where
 
 instance Arbitrary CustomSet where
  arbitrary = do
- score <- arbitrary
- value <- listOf1 genSafeChar
- action <- arbitrary
- return ( CustomSet score (pack $ value) action )
- where
+   score <- arbitrary
+   value <- listOf1 genSafeChar
+   action <- arbitrary
+   return $ MkCustomSet score (pack $ value) action
+  where
    genSafeChar = elements $ ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']
+
+instance Arbitrary CustomSetList where
+  arbitrary = do
+    list <- listOf1 (arbitrary :: Gen CustomSet)
+    return $ MkCustomSetList list
 
 sortedSetName :: ByteString
 sortedSetName = "sset"
@@ -84,13 +101,12 @@ delete customSet = zrem sortedSetName [(value customSet)]
 customArgs :: Args
 customArgs = ( stdArgs { maxSuccess = 1000000000 } )
 
-sortedSetHasExpectedBehavior :: Connection -> CustomSet -> Property
-sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
+sortedSetHasExpectedBehavior :: Connection -> CustomSetList -> Property
+sortedSetHasExpectedBehavior conn customSetList = monadicIO $ do
   realityMatchesModel <- run $ do
+    let MkCustomSetList csl = customSetList
 
-    case action customSet of
-      Add -> runRedis conn $ add customSet
-      Delete -> runRedis conn $ delete customSet
+    _ <- mymap csl
 
     setRange <- runRedis conn $ do
       val <- zcard sortedSetName
@@ -108,22 +124,37 @@ sortedSetHasExpectedBehavior conn customSet = monadicIO $ do
     testEntry2 <- getEntry (randNumber2-1)
     testEntry3 <- getEntry (randNumber3-1)
 
-    writeFile "redis_sortedsets.log" $ (show $ action customSet) ++ ": " ++ (unpack $ value customSet) ++
+    {-writeFile "redis_sortedsets.log" $ (show $ action customSet) ++ ": " ++ (unpack $ value customSet) ++
                                       "\n" ++ "Indexes chosen: " ++ (show $ randNumber1-1) ++ " "
                                       ++ (show $ randNumber2-1) ++ " " ++ (show $ randNumber3-1) ++ "\n" ++
                                       "Scores: " ++ (show testEntry1) ++ " " ++ (show testEntry2)
-                                      ++ " " ++ (show testEntry3) ++ "\n\n"
+                                      ++ " " ++ (show testEntry3) ++ "\n\n"-}
 
     return $ (testEntry1 <= testEntry2) && (testEntry2 <= testEntry3)
 
   assert $ realityMatchesModel
 
   where
+    mymap [] = do
+      return 0
+
+    mymap li = do
+      mapAction $ head li
+      _ <- mymap $ tail li
+      return 0
+
+    mapAction :: CustomSet -> IO (Either Reply Integer)
+    mapAction customSet = do
+      case action customSet of
+        Add -> runRedis conn $ add customSet
+        Delete -> runRedis conn $ delete customSet
+
     getEntry x = runRedis conn $ do
       val <- zrangeWithscores sortedSetName x x
       case val of
         Right v -> if v == [] then return 0
                               else return $ snd $ head $ v
+
     getRandomPair x y gen = randomR (x, y) gen :: (Integer, StdGen)
 
 main :: IO ()
