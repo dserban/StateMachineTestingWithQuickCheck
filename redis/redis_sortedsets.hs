@@ -115,11 +115,10 @@ sortedSetHasExpectedBehavior conn instanceOfCustomSetList = monadicIO $ do
     testEntry2 <- getEntry (randNumber2-1)
     testEntry3 <- getEntry (randNumber3-1)
 
-    {-writeFile "redis_sortedsets.log" $ (show $ action customSet) ++ ": " ++ (unpack $ value customSet) ++
-                                      "\n" ++ "Indexes chosen: " ++ (show $ randNumber1-1) ++ " "
+    writeFile "redis_sortedsets.log" $ "Indexes chosen: " ++ (show $ randNumber1-1) ++ " "
                                       ++ (show $ randNumber2-1) ++ " " ++ (show $ randNumber3-1) ++ "\n" ++
                                       "Scores: " ++ (show testEntry1) ++ " " ++ (show testEntry2)
-                                      ++ " " ++ (show testEntry3) ++ "\n\n"-}
+                                      ++ " " ++ (show testEntry3) ++ "\n\n"
 
     return $ (testEntry1 <= testEntry2) && (testEntry2 <= testEntry3)
 
